@@ -1,38 +1,189 @@
-import { type User, type InsertUser } from "@shared/schema";
-import { randomUUID } from "crypto";
-
-// modify the interface with any CRUD methods
-// you might need
+import { db } from "./db";
+import {
+  products,
+  sales,
+  saleItems,
+  type InsertProduct,
+  type UpdateProductRequest,
+  type ProductResponse,
+  type SaleResponse,
+  type CreateSaleRequest,
+  type DashboardStatsResponse,
+} from "@shared/schema";
+import { eq, desc, sql, gte } from "drizzle-orm";
 
 export interface IStorage {
-  getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
-  createUser(user: InsertUser): Promise<User>;
+  // Products
+  getProducts(): Promise<ProductResponse[]>;
+  getProduct(id: number): Promise<ProductResponse | undefined>;
+  createProduct(product: InsertProduct): Promise<ProductResponse>;
+  updateProduct(id: number, updates: UpdateProductRequest): Promise<ProductResponse>;
+  deleteProduct(id: number): Promise<void>;
+
+  // Sales
+  getSales(): Promise<SaleResponse[]>;
+  getSale(id: number): Promise<SaleResponse | undefined>;
+  createSale(sale: CreateSaleRequest): Promise<SaleResponse>;
+
+  // Dashboard
+  getDashboardStats(): Promise<DashboardStatsResponse>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-
-  constructor() {
-    this.users = new Map();
+export class DatabaseStorage implements IStorage {
+  async getProducts(): Promise<ProductResponse[]> {
+    return await db.select().from(products).orderBy(desc(products.createdAt));
   }
 
-  async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+  async getProduct(id: number): Promise<ProductResponse | undefined> {
+    const [product] = await db.select().from(products).where(eq(products.id, id));
+    return product;
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+  async createProduct(product: InsertProduct): Promise<ProductResponse> {
+    const [newProduct] = await db
+      .insert(products)
+      .values(product)
+      .returning();
+    return newProduct;
   }
 
-  async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = { ...insertUser, id };
-    this.users.set(id, user);
-    return user;
+  async updateProduct(id: number, updates: UpdateProductRequest): Promise<ProductResponse> {
+    const [updatedProduct] = await db
+      .update(products)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(products.id, id))
+      .returning();
+    return updatedProduct;
+  }
+
+  async deleteProduct(id: number): Promise<void> {
+    await db.delete(products).where(eq(products.id, id));
+  }
+
+  async getSales(): Promise<SaleResponse[]> {
+    const salesRecords = await db.select().from(sales).orderBy(desc(sales.date));
+    
+    const result: SaleResponse[] = [];
+    for (const sale of salesRecords) {
+      const items = await db
+        .select({
+          id: saleItems.id,
+          saleId: saleItems.saleId,
+          productId: saleItems.productId,
+          quantity: saleItems.quantity,
+          unitPrice: saleItems.unitPrice,
+          subtotal: saleItems.subtotal,
+          product: products,
+        })
+        .from(saleItems)
+        .leftJoin(products, eq(saleItems.productId, products.id))
+        .where(eq(saleItems.saleId, sale.id));
+
+      result.push({
+        ...sale,
+        items,
+      });
+    }
+
+    return result;
+  }
+
+  async getSale(id: number): Promise<SaleResponse | undefined> {
+    const [sale] = await db.select().from(sales).where(eq(sales.id, id));
+    if (!sale) return undefined;
+
+    const items = await db
+      .select({
+        id: saleItems.id,
+        saleId: saleItems.saleId,
+        productId: saleItems.productId,
+        quantity: saleItems.quantity,
+        unitPrice: saleItems.unitPrice,
+        subtotal: saleItems.subtotal,
+        product: products,
+      })
+      .from(saleItems)
+      .leftJoin(products, eq(saleItems.productId, products.id))
+      .where(eq(saleItems.saleId, sale.id));
+
+    return { ...sale, items };
+  }
+
+  async createSale(saleRequest: CreateSaleRequest): Promise<SaleResponse> {
+    // Start a transaction for creating the sale and updating inventory
+    return await db.transaction(async (tx) => {
+      // 1. Create the sale
+      const [newSale] = await tx
+        .insert(sales)
+        .values({
+          totalAmount: saleRequest.totalAmount.toString(),
+          paymentMethod: saleRequest.paymentMethod,
+          date: saleRequest.date ? new Date(saleRequest.date) : new Date(),
+        })
+        .returning();
+
+      // 2. Create sale items and update product quantities
+      for (const item of saleRequest.items) {
+        // Insert sale item
+        await tx.insert(saleItems).values({
+          saleId: newSale.id,
+          productId: item.productId,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice.toString(),
+          subtotal: item.subtotal.toString(),
+        });
+
+        // Update product inventory
+        const [product] = await tx
+          .select()
+          .from(products)
+          .where(eq(products.id, item.productId));
+
+        if (product) {
+          await tx
+            .update(products)
+            .set({ quantity: product.quantity - item.quantity })
+            .where(eq(products.id, item.productId));
+        }
+      }
+
+      // Return the complete sale
+      return this.getSale(newSale.id) as Promise<SaleResponse>;
+    });
+  }
+
+  async getDashboardStats(): Promise<DashboardStatsResponse> {
+    // Total products
+    const [productsCountResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(products);
+    
+    // Low stock products (e.g., less than 10)
+    const [lowStockCountResult] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(products)
+      .where(sql`${products.quantity} < 10`);
+
+    // Today's boundaries
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // Sales today
+    const [salesTodayResult] = await db
+      .select({ 
+        count: sql<number>`count(*)::int`,
+        revenue: sql<number>`COALESCE(sum(${sales.totalAmount}::numeric), 0)::float`
+      })
+      .from(sales)
+      .where(gte(sales.date, today));
+
+    return {
+      totalProducts: productsCountResult.count,
+      lowStockProducts: lowStockCountResult.count,
+      totalSalesToday: salesTodayResult.count,
+      revenueToday: salesTodayResult.revenue || 0,
+    };
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
