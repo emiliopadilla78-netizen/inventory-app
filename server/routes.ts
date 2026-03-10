@@ -37,12 +37,16 @@ export async function registerRoutes(
       const input = api.products.create.input.parse(req.body);
       const product = await storage.createProduct(input);
       res.status(201).json(product);
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
           field: err.errors[0].path.join("."),
         });
+      }
+      // PostgreSQL unique constraint violation
+      if (err?.code === "23505") {
+        return res.status(400).json({ message: "A product with that SKU already exists." });
       }
       res.status(500).json({ message: "Failed to create product" });
     }
