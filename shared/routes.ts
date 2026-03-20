@@ -1,5 +1,11 @@
-import { z } from 'zod';
-import { insertProductSchema, insertSaleSchema, products, sales, saleItems } from './schema';
+import { z } from "zod";
+import {
+  insertProductSchema,
+  insertSaleSchema,
+  products,
+  sales,
+  saleItems,
+} from "./schema";
 
 export const errorSchemas = {
   validation: z.object({
@@ -19,12 +25,13 @@ const productResponseSchema = z.object({
   id: z.number(),
   name: z.string(),
   sku: z.string(),
+  variant: z.string().nullable(),
   description: z.string().nullable(),
   price: z.string(),
   quantity: z.number(),
   category: z.string(),
-  createdAt: z.date().nullable(),
-  updatedAt: z.date().nullable(),
+  createdAt: z.coerce.date().nullable(),
+  updatedAt: z.coerce.date().nullable(),
 });
 
 const saleItemResponseSchema = z.object({
@@ -41,8 +48,8 @@ const saleResponseSchema = z.object({
   id: z.number(),
   totalAmount: z.string(),
   paymentMethod: z.string(),
-  date: z.date(),
-  createdAt: z.date().nullable(),
+  date: z.coerce.date(),
+  createdAt: z.coerce.date().nullable(),
   items: z.array(saleItemResponseSchema).optional(),
 });
 
@@ -50,34 +57,36 @@ const createSaleRequestSchema = z.object({
   totalAmount: z.union([z.string(), z.number()]),
   paymentMethod: z.string(),
   date: z.string().or(z.date()).optional(),
-  items: z.array(z.object({
-    productId: z.number(),
-    quantity: z.number(),
-    unitPrice: z.union([z.string(), z.number()]),
-    subtotal: z.union([z.string(), z.number()]),
-  })),
+  items: z.array(
+    z.object({
+      productId: z.number(),
+      quantity: z.number(),
+      unitPrice: z.union([z.string(), z.number()]),
+      subtotal: z.union([z.string(), z.number()]),
+    }),
+  ),
 });
 
 export const api = {
   products: {
     list: {
-      method: 'GET' as const,
-      path: '/api/products' as const,
+      method: "GET" as const,
+      path: "/api/products" as const,
       responses: {
         200: z.array(productResponseSchema),
       },
     },
     get: {
-      method: 'GET' as const,
-      path: '/api/products/:id' as const,
+      method: "GET" as const,
+      path: "/api/products/:id" as const,
       responses: {
         200: productResponseSchema,
         404: errorSchemas.notFound,
       },
     },
     create: {
-      method: 'POST' as const,
-      path: '/api/products' as const,
+      method: "POST" as const,
+      path: "/api/products" as const,
       input: insertProductSchema,
       responses: {
         201: productResponseSchema,
@@ -85,8 +94,8 @@ export const api = {
       },
     },
     update: {
-      method: 'PUT' as const,
-      path: '/api/products/:id' as const,
+      method: "PUT" as const,
+      path: "/api/products/:id" as const,
       input: insertProductSchema.partial(),
       responses: {
         200: productResponseSchema,
@@ -95,8 +104,8 @@ export const api = {
       },
     },
     delete: {
-      method: 'DELETE' as const,
-      path: '/api/products/:id' as const,
+      method: "DELETE" as const,
+      path: "/api/products/:id" as const,
       responses: {
         204: z.void(),
         404: errorSchemas.notFound,
@@ -105,23 +114,23 @@ export const api = {
   },
   sales: {
     list: {
-      method: 'GET' as const,
-      path: '/api/sales' as const,
+      method: "GET" as const,
+      path: "/api/sales" as const,
       responses: {
         200: z.array(saleResponseSchema),
       },
     },
     get: {
-      method: 'GET' as const,
-      path: '/api/sales/:id' as const,
+      method: "GET" as const,
+      path: "/api/sales/:id" as const,
       responses: {
         200: saleResponseSchema,
         404: errorSchemas.notFound,
       },
     },
     create: {
-      method: 'POST' as const,
-      path: '/api/sales' as const,
+      method: "POST" as const,
+      path: "/api/sales" as const,
       input: createSaleRequestSchema,
       responses: {
         201: saleResponseSchema,
@@ -131,8 +140,8 @@ export const api = {
   },
   dashboard: {
     stats: {
-      method: 'GET' as const,
-      path: '/api/dashboard/stats' as const,
+      method: "GET" as const,
+      path: "/api/dashboard/stats" as const,
       responses: {
         200: z.object({
           totalProducts: z.number(),
@@ -145,7 +154,10 @@ export const api = {
   },
 };
 
-export function buildUrl(path: string, params?: Record<string, string | number>): string {
+export function buildUrl(
+  path: string,
+  params?: Record<string, string | number>,
+): string {
   let url = path;
   if (params) {
     Object.entries(params).forEach(([key, value]) => {

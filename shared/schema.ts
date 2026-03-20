@@ -1,4 +1,12 @@
-import { pgTable, text, serial, integer, numeric, timestamp, boolean } from "drizzle-orm/pg-core";
+import {
+  pgTable,
+  text,
+  serial,
+  integer,
+  numeric,
+  timestamp,
+  boolean,
+} from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -8,10 +16,12 @@ export const products = pgTable("products", {
   id: serial("id").primaryKey(),
   name: text("name").notNull(),
   sku: text("sku").notNull().unique(),
+  variant: text("variant"),
   description: text("description"),
   price: numeric("price", { precision: 10, scale: 2 }).notNull(),
   quantity: integer("quantity").notNull().default(0),
   category: text("category").notNull(),
+  atributo: text("atributo"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -26,8 +36,12 @@ export const sales = pgTable("sales", {
 
 export const saleItems = pgTable("sale_items", {
   id: serial("id").primaryKey(),
-  saleId: integer("sale_id").notNull().references(() => sales.id),
-  productId: integer("product_id").notNull().references(() => products.id),
+  saleId: integer("sale_id")
+    .notNull()
+    .references(() => sales.id),
+  productId: integer("product_id")
+    .notNull()
+    .references(() => products.id),
   quantity: integer("quantity").notNull(),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
@@ -54,10 +68,10 @@ export const productsRelations = relations(products, ({ many }) => ({
 }));
 
 // === BASE SCHEMAS ===
-export const insertProductSchema = createInsertSchema(products).omit({ 
-  id: true, 
-  createdAt: true, 
-  updatedAt: true 
+export const insertProductSchema = createInsertSchema(products).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 export const insertSaleSchema = createInsertSchema(sales).omit({

@@ -21,14 +21,21 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { useCreateProduct, useUpdateProduct } from "@/hooks/use-products";
+import {
+  useProducts,
+  useCreateProduct,
+  useUpdateProduct,
+} from "@/hooks/use-products";
 import { api } from "@shared/routes";
 
-type ProductResponse = z.infer<typeof api.products.list.responses[200]>[number];
+type ProductResponse = z.infer<
+  (typeof api.products.list.responses)[200]
+>[number];
 
 const productFormSchema = z.object({
   name: z.string().min(1, "Name is required"),
   sku: z.string().min(1, "SKU is required"),
+  variant: z.string().optional(),
   category: z.string().min(1, "Category is required"),
   description: z.string().optional(),
   price: z.coerce.number().min(0.01, "Price must be greater than 0"),
@@ -43,7 +50,19 @@ interface ProductDialogProps {
   product?: ProductResponse | null;
 }
 
-export function ProductDialog({ open, onOpenChange, product }: ProductDialogProps) {
+export function ProductDialog({
+  open,
+  onOpenChange,
+  product,
+}: ProductDialogProps) {
+  const { data: products } = useProducts();
+  const categories =
+    products
+      ?.map((p: any) => p.category)
+      .filter(
+        (value: string, index: number, self: string[]) =>
+          self.indexOf(value) === index,
+      ) || [];
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
 
@@ -52,6 +71,7 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
     defaultValues: {
       name: "",
       sku: "",
+      variant: "",
       category: "",
       description: "",
       price: 0,
@@ -64,6 +84,7 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
       form.reset({
         name: product.name,
         sku: product.sku,
+        variant: product.variant || "",
         category: product.category,
         description: product.description || "",
         price: Number(product.price),
@@ -89,12 +110,16 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
     };
 
     if (product) {
-      updateProduct.mutate({ id: product.id, ...payload }, {
-        onSuccess: () => onOpenChange(false)
-      });
+      updateProduct.mutate(
+        { id: product.id, ...payload },
+        {
+          onSuccess: () => onOpenChange(false),
+        },
+      );
     } else {
+      console.log(values);
       createProduct.mutate(payload, {
-        onSuccess: () => onOpenChange(false)
+        onSuccess: () => onOpenChange(false),
       });
     }
   };
@@ -105,9 +130,13 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px] p-6 rounded-2xl border-none shadow-2xl">
         <DialogHeader className="mb-4">
-          <DialogTitle className="text-2xl">{product ? "Edit Product" : "Add New Product"}</DialogTitle>
+          <DialogTitle className="text-2xl">
+            {product ? "Edit Product" : "Add New Product"}
+          </DialogTitle>
           <DialogDescription className="text-muted-foreground">
-            {product ? "Update the details of your product below." : "Enter the details for the new product here."}
+            {product
+              ? "Update the details of your product below."
+              : "Enter the details for the new product here."}
           </DialogDescription>
         </DialogHeader>
 
@@ -118,24 +147,55 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="font-semibold text-foreground">Product Name</FormLabel>
+                  <FormLabel className="font-semibold text-foreground">
+                    Product Name
+                  </FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Wireless Mouse" className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all" {...field} />
+                    <Input
+                      placeholder="e.g. Wireless Mouse"
+                      className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
+
             <div className="grid grid-cols-2 gap-4">
               <FormField
                 control={form.control}
                 name="sku"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold text-foreground">SKU</FormLabel>
+                    <FormLabel className="font-semibold text-foreground">
+                      SKU
+                    </FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. WM-001" className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all" {...field} />
+                      <Input
+                        placeholder="e.g. WM-001"
+                        className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="variant"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="font-semibold text-foreground">
+                      Variant
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        placeholder="e.g. Red, 500ml, Industrial nozzle"
+                        className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -146,9 +206,21 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                 name="category"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold text-foreground">Category</FormLabel>
+                    <FormLabel className="font-semibold text-foreground">
+                      Category
+                    </FormLabel>
                     <FormControl>
-                      <Input placeholder="e.g. Electronics" className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all" {...field} />
+                      <select
+                        {...field}
+                        className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all h-10 px-3"
+                      >
+                        <option value="">Select category</option>
+                        {categories.map((category: string) => (
+                          <option key={category} value={category}>
+                            {category}
+                          </option>
+                        ))}
+                      </select>
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -162,9 +234,16 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                 name="price"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold text-foreground">Price ($)</FormLabel>
+                    <FormLabel className="font-semibold text-foreground">
+                      Price ($)
+                    </FormLabel>
                     <FormControl>
-                      <Input type="number" step="0.01" className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all" {...field} />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -175,9 +254,15 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
                 name="quantity"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="font-semibold text-foreground">Stock Quantity</FormLabel>
+                    <FormLabel className="font-semibold text-foreground">
+                      Stock Quantity
+                    </FormLabel>
                     <FormControl>
-                      <Input type="number" className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all" {...field} />
+                      <Input
+                        type="number"
+                        className="rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -190,12 +275,14 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
               name="description"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="font-semibold text-foreground">Description</FormLabel>
+                  <FormLabel className="font-semibold text-foreground">
+                    Description
+                  </FormLabel>
                   <FormControl>
-                    <Textarea 
-                      placeholder="Product details..." 
-                      className="resize-none rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all" 
-                      {...field} 
+                    <Textarea
+                      placeholder="Product details..."
+                      className="resize-none rounded-xl border-border bg-muted/30 focus-visible:ring-primary/20 focus-visible:bg-background transition-all"
+                      {...field}
                     />
                   </FormControl>
                   <FormMessage />
@@ -204,10 +291,20 @@ export function ProductDialog({ open, onOpenChange, product }: ProductDialogProp
             />
 
             <DialogFooter className="pt-4">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="rounded-xl" disabled={isPending}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => onOpenChange(false)}
+                className="rounded-xl"
+                disabled={isPending}
+              >
                 Cancel
               </Button>
-              <Button type="submit" className="rounded-xl px-8 shadow-lg shadow-primary/20" disabled={isPending}>
+              <Button
+                type="submit"
+                className="rounded-xl px-8 shadow-lg shadow-primary/20"
+                disabled={isPending}
+              >
                 {isPending ? "Saving..." : "Save Product"}
               </Button>
             </DialogFooter>

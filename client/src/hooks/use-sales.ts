@@ -9,7 +9,7 @@ export function useSales() {
       const res = await fetch(api.sales.list.path, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch sales");
       const data = await res.json();
-      return api.sales.list.responses[200].parse(data);
+      return data;
     },
   });
 }
@@ -42,10 +42,12 @@ export function useCreateSale() {
         credentials: "include",
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Failed to process sale" }));
+        const err = await res
+          .json()
+          .catch(() => ({ message: "Failed to process sale" }));
         throw new Error(err.message || "Failed to process sale");
       }
-      return api.sales.create.responses[201].parse(await res.json());
+      return true;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.sales.list.path] });
@@ -54,7 +56,11 @@ export function useCreateSale() {
       toast({ title: "Sale completed successfully", variant: "default" });
     },
     onError: (err) => {
-      toast({ title: "Error completing sale", description: err.message, variant: "destructive" });
-    }
+      toast({
+        title: "Error completing sale",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
   });
 }

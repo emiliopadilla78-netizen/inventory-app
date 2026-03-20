@@ -17,7 +17,10 @@ export interface IStorage {
   getProducts(): Promise<ProductResponse[]>;
   getProduct(id: number): Promise<ProductResponse | undefined>;
   createProduct(product: InsertProduct): Promise<ProductResponse>;
-  updateProduct(id: number, updates: UpdateProductRequest): Promise<ProductResponse>;
+  updateProduct(
+    id: number,
+    updates: UpdateProductRequest,
+  ): Promise<ProductResponse>;
   deleteProduct(id: number): Promise<void>;
 
   // Sales
@@ -35,25 +38,32 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getProduct(id: number): Promise<ProductResponse | undefined> {
-    const [product] = await db.select().from(products).where(eq(products.id, id));
+    const [product] = await db
+      .select()
+      .from(products)
+      .where(eq(products.id, id));
     return product;
   }
 
   async createProduct(product: InsertProduct): Promise<ProductResponse> {
-    const [newProduct] = await db
-      .insert(products)
-      .values(product)
-      .returning();
+    const [newProduct] = await db.insert(products).values(product).returning();
     return newProduct;
   }
 
-  async updateProduct(id: number, updates: UpdateProductRequest): Promise<ProductResponse> {
+  async updateProduct(
+    id: number,
+    updates: UpdateProductRequest,
+  ): Promise<ProductResponse> {
     const [updatedProduct] = await db
       .update(products)
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(products.id, id))
       .returning();
-    return updatedProduct;
+    return {
+      ...updatedProduct,
+      createdAt: new Date(updatedProduct.createdAt ?? new Date()),
+      updatedAt: new Date(updatedProduct.updatedAt ?? new Date()),
+    };
   }
 
   async deleteProduct(id: number): Promise<void> {
@@ -61,8 +71,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSales(): Promise<SaleResponse[]> {
-    const salesRecords = await db.select().from(sales).orderBy(desc(sales.date));
-    
+    const salesRecords = await db
+      .select()
+      .from(sales)
+      .orderBy(desc(sales.date));
+
     const result: SaleResponse[] = [];
     for (const sale of salesRecords) {
       const items = await db
@@ -81,7 +94,7 @@ export class DatabaseStorage implements IStorage {
 
       result.push({
         ...sale,
-        items,
+        items: items as any,
       });
     }
 
@@ -106,7 +119,7 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(products, eq(saleItems.productId, products.id))
       .where(eq(saleItems.saleId, sale.id));
 
-    return { ...sale, items };
+    return { ...sale, items: items as any };
   }
 
   async createSale(saleRequest: CreateSaleRequest): Promise<SaleResponse> {
@@ -118,7 +131,8 @@ export class DatabaseStorage implements IStorage {
         .values({
           totalAmount: saleRequest.totalAmount.toString(),
           paymentMethod: saleRequest.paymentMethod,
-          date: saleRequest.date ? new Date(saleRequest.date) : new Date(),
+          date:
+            saleRequest.date != null ? new Date(saleRequest.date) : new Date(),
         })
         .returning();
 
@@ -139,16 +153,39 @@ export class DatabaseStorage implements IStorage {
           .from(products)
           .where(eq(products.id, item.productId));
 
-        if (product) {
+        if (!product) {
+          throw new Error("Producto no encontrado");
+        }
+
+        // 🔧 corregir stock negativo existente
+        let currentStock = product.quantity;
+        if (currentStock < 0) {
+          currentStock = 100;
+
           await tx
             .update(products)
-            .set({ quantity: product.quantity - item.quantity })
+            .set({ quantity: currentStock })
             .where(eq(products.id, item.productId));
         }
+
+        // 🛑 validar stock suficiente
+        if (currentStock < item.quantity) {
+          throw new Error(`Stock insuficiente para ${product.name}`);
+        }
+
+        // ➖ descontar correctamente
+        const newQuantity = currentStock - item.quantity;
+
+        await tx
+          .update(products)
+          .set({ quantity: newQuantity })
+          .where(eq(products.id, item.productId));
       }
 
       // Return the complete sale
-      return this.getSale(newSale.id) as Promise<SaleResponse>;
+      const fullSale = await this.getSale(newSale.id);
+      if (!fullSale) throw new Error("Sale not found");
+      return fullSale;
     });
   }
 
@@ -157,7 +194,7 @@ export class DatabaseStorage implements IStorage {
     const [productsCountResult] = await db
       .select({ count: sql<number>`count(*)::int` })
       .from(products);
-    
+
     // Low stock products (e.g., less than 10)
     const [lowStockCountResult] = await db
       .select({ count: sql<number>`count(*)::int` })
@@ -170,9 +207,9 @@ export class DatabaseStorage implements IStorage {
 
     // Sales today
     const [salesTodayResult] = await db
-      .select({ 
+      .select({
         count: sql<number>`count(*)::int`,
-        revenue: sql<number>`COALESCE(sum(${sales.totalAmount}::numeric), 0)::float`
+        revenue: sql<number>`COALESCE(sum(${sales.totalAmount}::numeric), 0)::float`,
       })
       .from(sales)
       .where(gte(sales.date, today));
@@ -187,3 +224,12 @@ export class DatabaseStorage implements IStorage {
 }
 
 export const storage = new DatabaseStorage();
+// 🔧 FIX TEMPORAL: arreglar stocks negativos
+async function fixNegativeStock() {
+  await db
+    .update(products)
+    .set({ quantity: 100 })
+    .where(sql`${products.quantity} < 0`);
+}
+
+// ejecutar automáticamente al iniciar

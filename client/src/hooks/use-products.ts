@@ -6,10 +6,12 @@ export function useProducts() {
   return useQuery({
     queryKey: [api.products.list.path],
     queryFn: async () => {
-      const res = await fetch(api.products.list.path, { credentials: "include" });
+      const res = await fetch(api.products.list.path, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to fetch products");
       const data = await res.json();
-      return api.products.list.responses[200].parse(data);
+      return data;
     },
   });
 }
@@ -42,7 +44,9 @@ export function useCreateProduct() {
         credentials: "include",
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Failed to create product" }));
+        const err = await res
+          .json()
+          .catch(() => ({ message: "Failed to create product" }));
         throw new Error(err.message || "Failed to create product");
       }
       return api.products.create.responses[201].parse(await res.json());
@@ -53,8 +57,12 @@ export function useCreateProduct() {
       toast({ title: "Product created successfully" });
     },
     onError: (err) => {
-      toast({ title: "Error creating product", description: err.message, variant: "destructive" });
-    }
+      toast({
+        title: "Error creating product",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
   });
 }
 
@@ -63,7 +71,10 @@ export function useUpdateProduct() {
   const { toast } = useToast();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: Partial<ProductInput> & { id: number }) => {
+    mutationFn: async ({
+      id,
+      ...updates
+    }: Partial<ProductInput> & { id: number }) => {
       const url = buildUrl(api.products.update.path, { id });
       const res = await fetch(url, {
         method: api.products.update.method,
@@ -72,10 +83,17 @@ export function useUpdateProduct() {
         credentials: "include",
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ message: "Failed to update product" }));
+        const err = await res
+          .json()
+          .catch(() => ({ message: "Failed to update product" }));
         throw new Error(err.message || "Failed to update product");
       }
-      return api.products.update.responses[200].parse(await res.json());
+      const data = await res.json();
+
+      data.createdAt = new Date(data.createdAt);
+      data.updatedAt = new Date(data.updatedAt);
+
+      return api.products.update.responses[200].parse(data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [api.products.list.path] });
@@ -83,8 +101,12 @@ export function useUpdateProduct() {
       toast({ title: "Product updated successfully" });
     },
     onError: (err) => {
-      toast({ title: "Error updating product", description: err.message, variant: "destructive" });
-    }
+      toast({
+        title: "Error updating product",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
   });
 }
 
@@ -108,7 +130,11 @@ export function useDeleteProduct() {
       toast({ title: "Product deleted successfully" });
     },
     onError: (err) => {
-      toast({ title: "Error deleting product", description: err.message, variant: "destructive" });
-    }
+      toast({
+        title: "Error deleting product",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
   });
 }

@@ -6,11 +6,10 @@ import { z } from "zod";
 
 export async function registerRoutes(
   httpServer: Server,
-  app: Express
+  app: Express,
 ): Promise<Server> {
-  
   // --- Products ---
-  
+
   app.get(api.products.list.path, async (req, res) => {
     try {
       const products = await storage.getProducts();
@@ -46,7 +45,9 @@ export async function registerRoutes(
       }
       // PostgreSQL unique constraint violation
       if (err?.code === "23505") {
-        return res.status(400).json({ message: "A product with that SKU already exists." });
+        return res
+          .status(400)
+          .json({ message: "A product with that SKU already exists." });
       }
       res.status(500).json({ message: "Failed to create product" });
     }
@@ -56,6 +57,8 @@ export async function registerRoutes(
     try {
       const input = api.products.update.input.parse(req.body);
       const product = await storage.updateProduct(Number(req.params.id), input);
+      product.createdAt = new Date(product.createdAt);
+      product.updatedAt = new Date(product.updatedAt);
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
@@ -79,9 +82,37 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to delete product" });
     }
   });
+  app.post("/api/products/:id/add-stock", async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      console.log("ADD STOCK", id, req.body);
+      const quantity = Number(req.body.quantity);
+
+      if (!quantity || quantity <= 0) {
+        return res.status(400).json({ message: "Invalid quantity" });
+      }
+
+      const product = await storage.getProduct(id);
+
+      if (!product) {
+        return res.status(404).json({ message: "Product not found" });
+      }
+
+      const newQuantity = product.quantity + quantity;
+
+      const updatedProduct = await storage.updateProduct(id, {
+        quantity: newQuantity,
+      });
+
+      res.json(updatedProduct);
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Failed to add stock" });
+    }
+  });
 
   // --- Sales ---
-  
+
   app.get(api.sales.list.path, async (req, res) => {
     try {
       const salesList = await storage.getSales();
