@@ -56,7 +56,16 @@ export default function Products() {
 
   const [deleteId, setDeleteId] = useState<number | null>(null);
 
-  const filteredProducts = products ?? [];
+  const filteredProducts = (products ?? []).filter((p: any) => {
+    const name = (p.name ?? "").toLowerCase();
+    const sku = (p.sku ?? "").toLowerCase();
+    const category = (p.category ?? "").toLowerCase();
+    const term = (search || "").toLowerCase().trim();
+
+    if (!term) return true;
+
+    return name.includes(term) || sku.includes(term) || category.includes(term);
+  });
 
   const handleEdit = (product: Product) => {
     setSelectedProduct(product);

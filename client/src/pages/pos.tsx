@@ -47,6 +47,15 @@ export default function POS() {
   };
 
   const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+  const filteredProducts = (products ?? []).filter((p: any) => {
+    const name = (p.name ?? "").toLowerCase();
+    const sku = (p.sku ?? "").toLowerCase();
+    const term = (search || "").toLowerCase().trim();
+
+    if (!term) return true;
+
+    return name.includes(term) || sku.includes(term);
+  });
 
   const completeSale = async () => {
     if (cart.length === 0) return;
@@ -101,53 +110,46 @@ export default function POS() {
             width: 650,
           }}
         >
-          {products
-            ?.filter(
-              (p: any) =>
-                p.name.toLowerCase().includes(search.toLowerCase()) ||
-                p.sku.toLowerCase().includes(search.toLowerCase()),
-            )
-            .slice(0, 10)
-            .map((p: any) => (
+          {filteredProducts.slice(0, 10).map((p: any) => (
+            <div
+              key={p.id}
+              onClick={() => {
+                setSelectedProductId(p.id);
+                setSearch("");
+              }}
+              style={{
+                padding: 8,
+                cursor: "pointer",
+                borderBottom: "1px solid #eee",
+                display: "grid",
+                gridTemplateColumns: "350px 150px 100px",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <b>{p.sku}</b> — {p.name}
+              </div>
+
               <div
-                key={p.id}
-                onClick={() => {
-                  setSelectedProductId(p.id);
-                  setSearch(p.name + (p.variant ? ` (${p.variant})` : ""));
-                }}
                 style={{
-                  padding: 8,
-                  cursor: "pointer",
-                  borderBottom: "1px solid #eee",
-                  display: "grid",
-                  gridTemplateColumns: "350px 150px 100px",
-                  alignItems: "center",
+                  textAlign: "center",
+                  fontSize: 16,
+                  fontWeight: "bold",
                 }}
               >
-                <div>
-                  <b>{p.sku}</b> — {p.name}
-                </div>
-
-                <div
-                  style={{
-                    textAlign: "center",
-                    fontSize: 16,
-                    fontWeight: "bold",
-                  }}
-                >
-                  {p.variant || "-"}
-                </div>
-
-                <div style={{ textAlign: "right", color: "#666" }}>
-                  Stock: {p.quantity}
-                  {p.quantity < 10 && (
-                    <div style={{ color: "red", fontSize: 12 }}>
-                      ⚠️ Bajo stock
-                    </div>
-                  )}
-                </div>
+                {p.variant || "-"}
               </div>
-            ))}
+
+              <div style={{ textAlign: "right", color: "#666" }}>
+                Stock: {p.quantity}
+                {p.quantity < 10 && (
+                  <div style={{ color: "red", fontSize: 12 }}>
+                    ⚠️ Bajo stock
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
         {selectedProduct && (
           <div style={{ marginTop: 10 }}>
