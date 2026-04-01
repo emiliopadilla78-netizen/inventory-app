@@ -56,6 +56,7 @@ const saleResponseSchema = z.object({
 const createSaleRequestSchema = z.object({
   totalAmount: z.union([z.string(), z.number()]),
   paymentMethod: z.string(),
+  clientId: z.number().optional(),
   date: z.string().or(z.date()).optional(),
   items: z.array(
     z.object({

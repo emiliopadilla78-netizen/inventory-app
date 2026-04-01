@@ -42,10 +42,14 @@ export function useCreateSale() {
         credentials: "include",
       });
       if (!res.ok) {
-        const err = await res
-          .json()
-          .catch(() => ({ message: "Failed to process sale" }));
-        throw new Error(err.message || "Failed to process sale");
+        const err = await res;
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data?.message || "Error creating sale");
+        }
+
+        return data;
       }
       return true;
     },

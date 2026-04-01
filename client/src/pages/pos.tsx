@@ -13,6 +13,7 @@ export default function POS() {
   const [search, setSearch] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState<any[]>([]);
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
 
   const selectedProduct = products?.find(
     (p: any) => p.id === selectedProductId,
@@ -58,7 +59,46 @@ export default function POS() {
   });
 
   const completeSale = async () => {
+    if (!selectedClientId) {
+      alert("Debes seleccionar un cliente");
+      return;
+    }
     if (cart.length === 0) return;
+    // 🔥 VALIDACIÓN DE DESCUENTOS
+    const productosConExceso = cart.filter((item) => {
+      const product = products.find((p: any) => p.id === item.productId);
+      if (!product) return false;
+
+      const base = Number(product.price);
+      const venta = Number(item.unitPrice);
+
+      if (base === 0) return false;
+
+      const discount = 1 - venta / base;
+
+      const maxDiscount = product.max_discount ?? 0.2;
+
+      return discount > maxDiscount;
+    });
+    if (productosConExceso.length > 0) {
+      const mensaje =
+        "Descuentos fuera de rango:\n\n" +
+        productosConExceso
+          .map((item) => {
+            const product = products.find((p: any) => p.id === item.productId);
+            const base = Number(product.price);
+            const venta = Number(item.unitPrice);
+            const discount = Math.round((1 - venta / base) * 100);
+
+            return `${product.name} → ${discount}%`;
+          })
+          .join("\n") +
+        "\n\n¿Deseas continuar?";
+
+      const confirmar = window.confirm(mensaje);
+
+      if (!confirmar) return;
+    }
 
     for (const item of cart) {
       const product = products.find((p: any) => p.id === item.productId);
@@ -74,6 +114,7 @@ export default function POS() {
     await createSale.mutateAsync({
       paymentMethod: "cash",
       totalAmount: total.toFixed(2),
+      clientId: selectedClientId,
       items: cart.map((item) => ({
         productId: item.productId,
         quantity: item.quantity,
@@ -88,6 +129,22 @@ export default function POS() {
   return (
     <div style={{ padding: 40 }}>
       <h1 style={{ fontSize: 28, fontWeight: "bold", marginBottom: 20 }}>
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ marginRight: 10 }}>Cliente:</label>
+          <select
+            value={selectedClientId ?? ""}
+            onChange={(e) =>
+              setSelectedClientId(
+                e.target.value ? Number(e.target.value) : null,
+              )
+            }
+          >
+            <option value="">Seleccionar cliente</option>
+            <option value={1}>Cliente A (30%)</option>
+            <option value={2}>Cliente B (10%)</option>
+            <option value={3}>Cliente C (50%)</option>
+          </select>
+        </div>
         Point of Sale
       </h1>
 

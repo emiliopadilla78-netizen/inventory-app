@@ -43,7 +43,6 @@ export async function registerRoutes(
           field: err.errors[0].path.join("."),
         });
       }
-      // PostgreSQL unique constraint violation
       if (err?.code === "23505") {
         return res
           .status(400)
@@ -57,13 +56,13 @@ export async function registerRoutes(
     try {
       const input = api.products.update.input.parse(req.body);
       const product = await storage.updateProduct(Number(req.params.id), input);
-      product.createdAt = new Date(product.createdAt);
-      product.updatedAt = new Date(product.updatedAt);
+
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
+
       res.json(product);
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
@@ -82,10 +81,10 @@ export async function registerRoutes(
       res.status(500).json({ message: "Failed to delete product" });
     }
   });
+
   app.post("/api/products/:id/add-stock", async (req, res) => {
     try {
       const id = Number(req.params.id);
-      console.log("ADD STOCK", id, req.body);
       const quantity = Number(req.body.quantity);
 
       if (!quantity || quantity <= 0) {
@@ -93,20 +92,16 @@ export async function registerRoutes(
       }
 
       const product = await storage.getProduct(id);
-
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
 
-      const newQuantity = product.quantity + quantity;
-
       const updatedProduct = await storage.updateProduct(id, {
-        quantity: newQuantity,
+        quantity: product.quantity + quantity,
       });
 
       res.json(updatedProduct);
     } catch (err) {
-      console.error(err);
       res.status(500).json({ message: "Failed to add stock" });
     }
   });
@@ -136,17 +131,22 @@ export async function registerRoutes(
 
   app.post(api.sales.create.path, async (req, res) => {
     try {
-      const input = api.sales.create.input.parse(req.body);
+      const input = req.body;
       const sale = await storage.createSale(input);
       res.status(201).json(sale);
-    } catch (err) {
+    } catch (err: any) {
+      console.error("SALE ERROR:", err);
+
       if (err instanceof z.ZodError) {
         return res.status(400).json({
           message: err.errors[0].message,
           field: err.errors[0].path.join("."),
         });
       }
-      res.status(500).json({ message: "Failed to create sale" });
+
+      res.status(500).json({
+        message: err.message || "Failed to create sale",
+      });
     }
   });
 
@@ -161,51 +161,5 @@ export async function registerRoutes(
     }
   });
 
-  // --- Seed Database ---
-  await seedDatabase();
-
   return httpServer;
-}
-
-async function seedDatabase() {
-  try {
-    const products = await storage.getProducts();
-    if (products.length === 0) {
-      await storage.createProduct({
-        name: "Wireless Mouse",
-        sku: "WM-001",
-        description: "Ergonomic wireless mouse with 2.4GHz receiver",
-        price: "29.99",
-        quantity: 50,
-        category: "Electronics",
-      });
-      await storage.createProduct({
-        name: "Mechanical Keyboard",
-        sku: "KB-102",
-        description: "RGB mechanical keyboard with blue switches",
-        price: "89.50",
-        quantity: 15,
-        category: "Electronics",
-      });
-      await storage.createProduct({
-        name: "Coffee Mug",
-        sku: "CM-055",
-        description: "Ceramic coffee mug 12oz",
-        price: "12.00",
-        quantity: 100,
-        category: "Office Supplies",
-      });
-      await storage.createProduct({
-        name: "Office Chair",
-        sku: "OC-200",
-        description: "Ergonomic mesh office chair",
-        price: "145.00",
-        quantity: 5,
-        category: "Furniture",
-      });
-      console.log("Database seeded successfully with sample products.");
-    }
-  } catch (err) {
-    console.error("Error seeding database:", err);
-  }
 }

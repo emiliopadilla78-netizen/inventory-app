@@ -28,10 +28,13 @@ export const products = pgTable("products", {
 
 export const sales = pgTable("sales", {
   id: serial("id").primaryKey(),
-  totalAmount: numeric("total_amount", { precision: 10, scale: 2 }).notNull(),
-  paymentMethod: text("payment_method").notNull(), // cash, credit_card, etc.
-  date: timestamp("date").defaultNow().notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
+  totalAmount: numeric("total_amount").notNull(),
+  paymentMethod: text("payment_method").notNull(),
+  date: timestamp("date").defaultNow(),
+
+  clientId: integer("client_id"),
+  discountPercent: integer("discount_percent").default(0),
+  status: text("status").default("approved").notNull(),
 });
 
 export const saleItems = pgTable("sale_items", {
@@ -76,7 +79,6 @@ export const insertProductSchema = createInsertSchema(products).omit({
 
 export const insertSaleSchema = createInsertSchema(sales).omit({
   id: true,
-  createdAt: true,
 });
 
 export const insertSaleItemSchema = createInsertSchema(saleItems).omit({

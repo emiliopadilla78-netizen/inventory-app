@@ -105,27 +105,14 @@ export class DatabaseStorage implements IStorage {
     const [sale] = await db.select().from(sales).where(eq(sales.id, id));
     if (!sale) return undefined;
 
-    const items = await db
-      .select({
-        id: saleItems.id,
-        saleId: saleItems.saleId,
-        productId: saleItems.productId,
-        quantity: saleItems.quantity,
-        unitPrice: saleItems.unitPrice,
-        subtotal: saleItems.subtotal,
-        product: products,
-      })
-      .from(saleItems)
-      .leftJoin(products, eq(saleItems.productId, products.id))
-      .where(eq(saleItems.saleId, sale.id));
-
-    return { ...sale, items: items as any };
+    return {
+      ...sale,
+      items: [],
+    } as SaleResponse;
   }
 
   async createSale(saleRequest: CreateSaleRequest): Promise<SaleResponse> {
-    // Start a transaction for creating the sale and updating inventory
     return await db.transaction(async (tx) => {
-      // 1. Create the sale
       const [newSale] = await tx
         .insert(sales)
         .values({
@@ -136,9 +123,13 @@ export class DatabaseStorage implements IStorage {
         })
         .returning();
 
-      // 2. Create sale items and update product quantities
+      if (!newSale) {
+        throw new Error("Failed to create sale");
+      }
+
       for (const item of saleRequest.items) {
-        // Insert sale item
+        console.log("DESCONTANDO STOCK", item.productId, item.quantity);
+        // 1. insertar item
         await tx.insert(saleItems).values({
           saleId: newSale.id,
           productId: item.productId,
@@ -147,45 +138,34 @@ export class DatabaseStorage implements IStorage {
           subtotal: item.subtotal.toString(),
         });
 
-        // Update product inventory
+        // 2. obtener producto actual
         const [product] = await tx
           .select()
           .from(products)
           .where(eq(products.id, item.productId));
 
         if (!product) {
-          throw new Error("Producto no encontrado");
+          throw new Error("Product not found");
         }
 
-        // 🔧 corregir stock negativo existente
-        let currentStock = product.quantity;
-        if (currentStock < 0) {
-          currentStock = 100;
-
-          await tx
-            .update(products)
-            .set({ quantity: currentStock })
-            .where(eq(products.id, item.productId));
+        // 3. validar stock
+        if (product.quantity < item.quantity) {
+          throw new Error("Insufficient stock");
         }
 
-        // 🛑 validar stock suficiente
-        if (currentStock < item.quantity) {
-          throw new Error(`Stock insuficiente para ${product.name}`);
-        }
-
-        // ➖ descontar correctamente
-        const newQuantity = currentStock - item.quantity;
-
+        // 4. descontar stock
         await tx
           .update(products)
-          .set({ quantity: newQuantity })
+          .set({
+            quantity: product.quantity - item.quantity,
+          })
           .where(eq(products.id, item.productId));
       }
 
-      // Return the complete sale
-      const fullSale = await this.getSale(newSale.id);
-      if (!fullSale) throw new Error("Sale not found");
-      return fullSale;
+      return {
+        ...newSale,
+        items: [],
+      } as SaleResponse;
     });
   }
 
