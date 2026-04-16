@@ -1,4 +1,5 @@
 import { db } from "./db";
+import { sql, eq, desc } from "drizzle-orm";
 import {
   products,
   sales,
@@ -10,12 +11,11 @@ import {
   type CreateSaleRequest,
   type DashboardStatsResponse,
 } from "@shared/schema";
-import { eq, desc, sql, gte } from "drizzle-orm";
 
 export interface IStorage {
-  // Products
   getProducts(): Promise<ProductResponse[]>;
   getProduct(id: number): Promise<ProductResponse | undefined>;
+  getProductBySku(sku: string): Promise<any>;
   createProduct(product: InsertProduct): Promise<ProductResponse>;
   updateProduct(
     id: number,
@@ -23,18 +23,20 @@ export interface IStorage {
   ): Promise<ProductResponse>;
   deleteProduct(id: number): Promise<void>;
 
-  // Sales
   getSales(): Promise<SaleResponse[]>;
   getSale(id: number): Promise<SaleResponse | undefined>;
   createSale(sale: CreateSaleRequest): Promise<SaleResponse>;
 
-  // Dashboard
   getDashboardStats(): Promise<DashboardStatsResponse>;
 }
 
 export class DatabaseStorage implements IStorage {
+
   async getProducts(): Promise<ProductResponse[]> {
-    return await db.select().from(products).orderBy(desc(products.createdAt));
+    const result = await db.execute(
+      sql`SELECT * FROM products`
+    );
+    return result.rows as any;
   }
 
   async getProduct(id: number): Promise<ProductResponse | undefined> {
@@ -43,6 +45,12 @@ export class DatabaseStorage implements IStorage {
       .from(products)
       .where(eq(products.id, id));
     return product;
+  }
+
+  async getProductBySku(sku: string) {
+    return db.query.products.findFirst({
+      where: (p, { eq }) => eq(p.sku, sku),
+    });
   }
 
   async createProduct(product: InsertProduct): Promise<ProductResponse> {
@@ -59,6 +67,7 @@ export class DatabaseStorage implements IStorage {
       .set({ ...updates, updatedAt: new Date() })
       .where(eq(products.id, id))
       .returning();
+
     return {
       ...updatedProduct,
       createdAt: new Date(updatedProduct.createdAt ?? new Date()),
@@ -77,6 +86,7 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(sales.date));
 
     const result: SaleResponse[] = [];
+
     for (const sale of salesRecords) {
       const items = await db
         .select({
@@ -92,9 +102,12 @@ export class DatabaseStorage implements IStorage {
         .leftJoin(products, eq(saleItems.productId, products.id))
         .where(eq(saleItems.saleId, sale.id));
 
-      result.push({
+      let user = null;
+
+           result.push({
         ...sale,
         items: items as any,
+        user,
       });
     }
 
@@ -118,18 +131,12 @@ export class DatabaseStorage implements IStorage {
         .values({
           totalAmount: saleRequest.totalAmount.toString(),
           paymentMethod: saleRequest.paymentMethod,
-          date:
-            saleRequest.date != null ? new Date(saleRequest.date) : new Date(),
+          date: saleRequest.date ? new Date(saleRequest.date) : new Date(),
+          userId: saleRequest.user_id,
         })
         .returning();
 
-      if (!newSale) {
-        throw new Error("Failed to create sale");
-      }
-
       for (const item of saleRequest.items) {
-        console.log("DESCONTANDO STOCK", item.productId, item.quantity);
-        // 1. insertar item
         await tx.insert(saleItems).values({
           saleId: newSale.id,
           productId: item.productId,
@@ -138,22 +145,17 @@ export class DatabaseStorage implements IStorage {
           subtotal: item.subtotal.toString(),
         });
 
-        // 2. obtener producto actual
         const [product] = await tx
           .select()
           .from(products)
           .where(eq(products.id, item.productId));
 
-        if (!product) {
-          throw new Error("Product not found");
-        }
+        if (!product) throw new Error("Product not found");
 
-        // 3. validar stock
         if (product.quantity < item.quantity) {
           throw new Error("Insufficient stock");
         }
 
-        // 4. descontar stock
         await tx
           .update(products)
           .set({
@@ -164,52 +166,19 @@ export class DatabaseStorage implements IStorage {
 
       return {
         ...newSale,
-        items: [],
+        items: saleRequest.items,
       } as SaleResponse;
     });
   }
 
   async getDashboardStats(): Promise<DashboardStatsResponse> {
-    // Total products
-    const [productsCountResult] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(products);
-
-    // Low stock products (e.g., less than 10)
-    const [lowStockCountResult] = await db
-      .select({ count: sql<number>`count(*)::int` })
-      .from(products)
-      .where(sql`${products.quantity} < 10`);
-
-    // Today's boundaries
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // Sales today
-    const [salesTodayResult] = await db
-      .select({
-        count: sql<number>`count(*)::int`,
-        revenue: sql<number>`COALESCE(sum(${sales.totalAmount}::numeric), 0)::float`,
-      })
-      .from(sales)
-      .where(gte(sales.date, today));
-
     return {
-      totalProducts: productsCountResult.count,
-      lowStockProducts: lowStockCountResult.count,
-      totalSalesToday: salesTodayResult.count,
-      revenueToday: salesTodayResult.revenue || 0,
+      totalProducts: 0,
+      lowStockProducts: 0,
+      totalSalesToday: 0,
+      revenueToday: 0,
     };
   }
 }
 
 export const storage = new DatabaseStorage();
-// 🔧 FIX TEMPORAL: arreglar stocks negativos
-async function fixNegativeStock() {
-  await db
-    .update(products)
-    .set({ quantity: 100 })
-    .where(sql`${products.quantity} < 0`);
-}
-
-// ejecutar automáticamente al iniciar

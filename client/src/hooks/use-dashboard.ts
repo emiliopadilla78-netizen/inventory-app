@@ -1,14 +1,37 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@shared/routes";
 
-export function useDashboardStats() {
+export function useDashboardStats(range: string) {
   return useQuery({
-    queryKey: [api.dashboard.stats.path],
+    queryKey: [api.dashboard.stats.path, range],
     queryFn: async () => {
-      const res = await fetch(api.dashboard.stats.path, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to fetch dashboard stats");
+      const res = await fetch(`/api/dashboard/stats?range=${range}`, {
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch dashboard stats");
+      }
+
       const data = await res.json();
-      return api.dashboard.stats.responses[200].parse(data);
+      return data;
+    },
+  });
+}
+
+export function useDashboardSellers(range: string) {
+  return useQuery({
+    queryKey: ["/api/dashboard/sellers", range],
+    queryFn: async () => {
+      const res = await fetch(`/api/dashboard/sellers?range=${range}`, {
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch sellers");
+      }
+
+      return res.json();
     },
   });
 }

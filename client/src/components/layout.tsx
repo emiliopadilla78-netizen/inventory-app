@@ -5,9 +5,9 @@ import { LayoutDashboard, Package, ShoppingCart, History } from "lucide-react";
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Point of Sale", url: "/pos", icon: ShoppingCart },
-  { title: "Products", url: "/products", icon: Package },
-  { title: "Sales History", url: "/sales", icon: History },
+  { title: "Ingreso de Ventas", url: "/pos", icon: ShoppingCart },
+  { title: "Productos", url: "/products", icon: Package },
+  { title: "Ventas Históricas", url: "/sales", icon: History },
 ];
 
 function AppSidebar() {
@@ -26,7 +26,7 @@ function AppSidebar() {
         </div>
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground ml-2 mb-2">
-            Main Menu
+            Menu Principal
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>

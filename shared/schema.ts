@@ -35,6 +35,7 @@ export const sales = pgTable("sales", {
   clientId: integer("client_id"),
   discountPercent: integer("discount_percent").default(0),
   status: text("status").default("approved").notNull(),
+userId: integer("user_id"),
 });
 
 export const saleItems = pgTable("sale_items", {
@@ -48,6 +49,15 @@ export const saleItems = pgTable("sale_items", {
   quantity: integer("quantity").notNull(),
   unitPrice: numeric("unit_price", { precision: 10, scale: 2 }).notNull(),
   subtotal: numeric("subtotal", { precision: 10, scale: 2 }).notNull(),
+});
+
+// ✅ NUEVA TABLA USERS
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  password: text("password").notNull(),
+  role: text("role").notNull().default("seller"),
 });
 
 // === RELATIONS ===
@@ -85,9 +95,12 @@ export const insertSaleItemSchema = createInsertSchema(saleItems).omit({
   id: true,
 });
 
-// === EXPLICIT API CONTRACT TYPES ===
+// === USERS SCHEMA
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+});
 
-// Base types
+// === TYPES ===
 export type Product = typeof products.$inferSelect;
 export type InsertProduct = z.infer<typeof insertProductSchema>;
 
@@ -97,26 +110,5 @@ export type InsertSale = z.infer<typeof insertSaleSchema>;
 export type SaleItem = typeof saleItems.$inferSelect;
 export type InsertSaleItem = z.infer<typeof insertSaleItemSchema>;
 
-// Request types
-export type CreateProductRequest = InsertProduct;
-export type UpdateProductRequest = Partial<InsertProduct>;
-
-export type CreateSaleItemRequest = Omit<InsertSaleItem, "saleId">;
-export type CreateSaleRequest = InsertSale & {
-  items: CreateSaleItemRequest[];
-};
-
-// Response types
-export type ProductResponse = Product;
-export type ProductsListResponse = Product[];
-
-export type SaleItemWithProduct = SaleItem & { product?: Product };
-export type SaleResponse = Sale & { items: SaleItemWithProduct[] };
-export type SalesListResponse = Sale[];
-
-export type DashboardStatsResponse = {
-  totalProducts: number;
-  lowStockProducts: number;
-  totalSalesToday: number;
-  revenueToday: number;
-};
+export type User = typeof users.$inferSelect;
+export type InsertUser = z.infer<typeof insertUserSchema>;

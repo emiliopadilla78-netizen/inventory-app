@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import * as XLSX from "xlsx";
 import { useProducts, useDeleteProduct } from "@/hooks/use-products";
 import { ProductDialog } from "@/components/products/product-dialog";
 import { Button } from "@/components/ui/button";
@@ -40,14 +41,40 @@ export default function Products() {
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useState(() => {
-    fetch("/api/products")
-      .then((res) => res.json())
-      .then((data) => {
-        setProducts(data);
-        setIsLoading(false);
-      });
-  });
+
+const handleImport = async () => {
+  try {
+    const response = await fetch("/api/sales/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+  rows: [
+  {
+    sku: "MRP-001",
+    quantity: 1,
+    unitPrice: 100,
+  },
+],
+}),
+    });
+
+    const data = await response.json();
+    console.log("IMPORT RESULT:", data);
+  } catch (error) {
+    console.error("IMPORT ERROR:", error);
+  }
+};
+
+useEffect(() => {
+  fetch("/api/products")
+    .then((res) => res.json())
+    .then((data) => {
+      setProducts(Array.isArray(data) ? data : []);
+      setIsLoading(false);
+    });
+}, []);
   const deleteProduct = useDeleteProduct();
 
   const [search, setSearch] = useState("");
@@ -88,9 +115,9 @@ export default function Products() {
     <div className="p-8 max-w-7xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-4xl font-extrabold tracking-tight">Inventory</h1>
+          <h1 className="text-4xl font-extrabold tracking-tight">Inventario</h1>
           <p className="text-muted-foreground mt-1 text-lg">
-            Manage your products and stock levels.
+            Gestiona tus productos y niveles de existencias.
           </p>
         </div>
         <Button
@@ -99,7 +126,7 @@ export default function Products() {
           className="rounded-xl shadow-lg shadow-primary/20 hover:-translate-y-0.5 transition-transform px-6"
         >
           <Plus className="w-5 h-5 mr-2" />
-          Add Product
+          Agrega Producto
         </Button>
       </div>
 
@@ -108,7 +135,7 @@ export default function Products() {
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
             <Input
-              placeholder="Search products, SKU, or category..."
+              placeholder="Busca productos, SKU, o categoria..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-10 rounded-xl bg-background border-border/50 h-11"
@@ -117,15 +144,16 @@ export default function Products() {
         </div>
 
         <div className="p-0">
-          <Table>
+
+  <Table>
             <TableHeader className="bg-muted/30">
               <TableRow className="hover:bg-transparent">
-                <TableHead className="pl-6 w-[300px]">Product</TableHead>
-                <TableHead>Category</TableHead>
-                <TableHead>Variant</TableHead>
-                <TableHead>Price</TableHead>
+                <TableHead className="pl-6 w-[300px]">Producto</TableHead>
+                <TableHead>Categoria</TableHead>
+                <TableHead>Variante</TableHead>
+                <TableHead>Precio</TableHead>
                 <TableHead>Stock</TableHead>
-                <TableHead className="text-right pr-6">Actions</TableHead>
+                <TableHead className="text-right pr-6">Detalles</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>

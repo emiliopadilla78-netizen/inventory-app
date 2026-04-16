@@ -1,8 +1,10 @@
 import { useState } from "react";
+import * as XLSX from "xlsx";
 import { useProducts } from "@/hooks/use-products";
 import { useCreateSale } from "@/hooks/use-sales";
 
 export default function POS() {
+const user = JSON.parse(localStorage.getItem("user") || "{}");
   const { data: products }: any = useProducts();
   console.log("POS PRODUCTS:", products);
   const createSale = useCreateSale();
@@ -14,22 +16,44 @@ export default function POS() {
   const [quantity, setQuantity] = useState(1);
   const [cart, setCart] = useState<any[]>([]);
   const [selectedClientId, setSelectedClientId] = useState<number | null>(null);
+const [uploading, setUploading] = useState(false);
+const [uploadResult, setUploadResult] = useState<string | null>(null);
+const [uploadErrors, setUploadErrors] = useState<string[]>([]);
 
   const selectedProduct = products?.find(
     (p: any) => p.id === selectedProductId,
   );
   const stock = selectedProduct?.quantity ?? 0;
 
-  const addToCart = () => {
-    if (!selectedProduct) return;
+const addToCart = () => {
+  if (!selectedProduct) return;
 
-    if (quantity > selectedProduct.quantity) {
+  const existingIndex = cart.findIndex(
+    (item) => item.productId === selectedProduct.id
+  );
+const unitPrice = Number(selectedProduct.price);
+  const basePrice = Number(selectedProduct.price);
+
+  if (existingIndex !== -1) {
+    const newCart = [...cart];
+
+    const newQty = newCart[existingIndex].quantity + quantity;
+
+    if (newQty > selectedProduct.quantity) {
       alert("Not enough stock available");
       return;
     }
 
-    const unitPrice = Number(selectedProduct.price);
-    const subtotal = unitPrice * quantity;
+    newCart[existingIndex].quantity = newQty;
+    newCart[existingIndex].subtotal =
+      newQty * newCart[existingIndex].unitPrice;
+
+    setCart(newCart);
+  } else {
+    if (quantity > selectedProduct.quantity) {
+      alert("Not enough stock available");
+      return;
+    }
 
     setCart([
       ...cart,
@@ -40,14 +64,82 @@ export default function POS() {
           (selectedProduct.variant ? ` (${selectedProduct.variant})` : ""),
         quantity,
         unitPrice,
-        subtotal,
+        subtotal: unitPrice * quantity,
       },
     ]);
+  }
 
-    setQuantity(1);
-  };
+  setQuantity(1);
+};
 
   const total = cart.reduce((sum, item) => sum + item.subtotal, 0);
+// IMPORTACIÓN EXCEL
+const handleFileUpload = async (e: any) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  setUploading(true);
+  setUploadResult(null);
+  setUploadErrors([]);
+
+  try {
+    const data = await file.arrayBuffer();
+    const workbook = XLSX.read(data);
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const json = XLSX.utils.sheet_to_json(sheet);
+
+    const excelDateToJSDate = (excelDate: number) => {
+  return new Date((excelDate - 25569) * 86400 * 1000);
+};
+
+const rows = json.map((row: any) => {
+  const rawDate = row["fecha de venta"];
+
+  let parsedDate;
+
+  if (typeof rawDate === "number") {
+    parsedDate = excelDateToJSDate(rawDate);
+ } else if (typeof rawDate === "string") {
+  const parts = rawDate.split("-");
+  const day = Number(parts[0]);
+  const month = Number(parts[1]) - 1;
+  const year = Number(parts[2]);
+
+  parsedDate = new Date(year, month, day);
+} else {
+    parsedDate = new Date();
+  }
+
+  return {
+    sku: String(row["sku"]).trim(),
+    quantity: Number(row["cantidad"]),
+    unitPrice: Number(row["precio"]),
+    client: row["cliente (rut)"],
+    date: parsedDate.toISOString(),
+  };
+});
+
+    const response = await fetch("/api/sales/import", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ rows }),
+    });
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setUploadErrors(result.errors || ["Error desconocido"]);
+    } else {
+      setUploadResult("Archivo cargado correctamente ✅");
+    }
+  } catch (error) {
+    setUploadErrors(["Error procesando archivo"]);
+  } finally {
+    setUploading(false);
+  }
+};
   const filteredProducts = (products ?? []).filter((p: any) => {
     const name = (p.name ?? "").toLowerCase();
     const sku = (p.sku ?? "").toLowerCase();
@@ -57,6 +149,11 @@ export default function POS() {
 
     return name.includes(term) || sku.includes(term);
   });
+const clientMap: Record<number, string> = {
+  1: "Cliente A",
+  2: "Cliente B",
+  3: "Cliente C",
+};
 
   const completeSale = async () => {
     if (!selectedClientId) {
@@ -76,7 +173,12 @@ export default function POS() {
 
       const discount = 1 - venta / base;
 
-      const maxDiscount = product.max_discount ?? 0.2;
+      let maxDiscount = product.max_discount ?? 0.2;
+
+// clientes especiales pueden superar límite
+if (selectedClientId === 3) {
+  maxDiscount = 0.5;
+}
 
       return discount > maxDiscount;
     });
@@ -112,16 +214,17 @@ export default function POS() {
     }
 
     await createSale.mutateAsync({
-      paymentMethod: "cash",
-      totalAmount: total.toFixed(2),
-      clientId: selectedClientId,
-      items: cart.map((item) => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice.toFixed(2),
-        subtotal: item.subtotal.toFixed(2),
-      })),
-    });
+  paymentMethod: clientMap[selectedClientId!] || "Sin vendedor",
+  totalAmount: total.toFixed(2),
+  clientId: selectedClientId,
+  user_id: user.id,
+  items: cart.map((item) => ({
+    productId: item.productId,
+    quantity: item.quantity,
+    unitPrice: item.unitPrice.toFixed(2),
+    subtotal: item.subtotal.toFixed(2),
+  })),
+});
 
     setCart([]);
   };
@@ -145,15 +248,34 @@ export default function POS() {
             <option value={3}>Cliente C (50%)</option>
           </select>
         </div>
-        Point of Sale
+        Punto de Venta
       </h1>
+<div style={{ marginBottom: 20 }}>
+  <input
+    type="file"
+    accept=".xlsx, .xls"
+    onChange={handleFileUpload}
+  />
+
+  {uploading && <p>Cargando archivo...</p>}
+
+  {uploadResult && <p style={{ color: "green" }}>{uploadResult}</p>}
+
+  {uploadErrors.length > 0 && (
+    <ul style={{ color: "red" }}>
+      {uploadErrors.map((err, i) => (
+        <li key={i}>{err}</li>
+      ))}
+    </ul>
+  )}
+</div>
 
       {/* Product selector */}
 
       <div style={{ marginBottom: 20 }}>
         <input
           type="text"
-          placeholder="Search product..."
+          placeholder="Busca producto..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           style={{ padding: 10, width: 650, marginBottom: 10, fontSize: 16 }}
@@ -227,7 +349,7 @@ export default function POS() {
         />
       </div>
 
-      {/* Add to cart */}
+      {/* Agrega al Carro */}
 
       <button
         onClick={addToCart}
@@ -238,12 +360,13 @@ export default function POS() {
           borderRadius: 6,
         }}
       >
-        Add to Cart
+
+        Agrega al Carro
       </button>
 
-      {/* Cart */}
+      {/* Carro */}
 
-      <h2 style={{ marginTop: 40, fontSize: 22 }}>Cart</h2>
+      <h2 style={{ marginTop: 40, fontSize: 22 }}>Carro</h2>
 
       <div style={{ marginTop: 20 }}>
         {cart.map((item, index) => (
@@ -260,21 +383,53 @@ export default function POS() {
 
             <div>Qty: {item.quantity}</div>
 
-            <input
-              type="number"
-              value={item.unitPrice}
-              step="0.01"
-              style={{ width: 80 }}
-              onChange={(e) => {
-                const price = Number(e.target.value);
+          <input
+  type="number"
+  value={item.unitPrice}
+  step="0.01"
+  style={{ width: 80 }}
+  onChange={(e) => {
+    const price = Number(e.target.value);
 
-                const newCart = [...cart];
-                newCart[index].unitPrice = price;
-                newCart[index].subtotal = price * newCart[index].quantity;
+    const product = products.find((p: any) => p.id === item.productId);
+    if (!product) return;
 
-                setCart(newCart);
-              }}
-            />
+    const base = Number(product.price);
+    const discount = base > 0 ? 1 - price / base : 0;
+
+    const newCart = [...cart];
+    newCart[index].unitPrice = price;
+    newCart[index].subtotal = price * newCart[index].quantity;
+    newCart[index].discountPercent = discount;
+
+    setCart(newCart);
+  }}
+/>
+
+<div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+  <input
+    type="number"
+    value={Math.round((item.discountPercent ?? 0) * 100)}
+    style={{ width: 60 }}
+    onChange={(e) => {
+      const percent = Number(e.target.value) / 100;
+
+      const product = products.find((p: any) => p.id === item.productId);
+      if (!product) return;
+
+      const base = Number(product.price);
+      const newPrice = base * (1 - percent);
+
+      const newCart = [...cart];
+      newCart[index].unitPrice = newPrice;
+      newCart[index].subtotal = newPrice * newCart[index].quantity;
+      newCart[index].discountPercent = percent;
+
+      setCart(newCart);
+    }}
+  />
+  <span>%</span>
+</div>
 
             <div style={{ width: 120 }}>
               ${(item.unitPrice * item.quantity).toFixed(2)}
@@ -304,7 +459,7 @@ export default function POS() {
 
       <h2 style={{ marginTop: 20 }}>Total: ${total.toFixed(2)}</h2>
 
-      {/* Complete sale */}
+      {/* Terminar Venta */}
 
       <button
         onClick={completeSale}
@@ -316,7 +471,7 @@ export default function POS() {
           borderRadius: 6,
         }}
       >
-        Complete Sale
+        Terminar Venta
       </button>
     </div>
   );
