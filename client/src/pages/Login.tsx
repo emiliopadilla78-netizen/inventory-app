@@ -5,6 +5,7 @@ export default function Login() {
   const [password, setPassword] = useState("");
 
   const handleLogin = async () => {
+console.log("LOGIN V2");
     const res = await fetch("/auth/login", {
       method: "POST",
       headers: {
