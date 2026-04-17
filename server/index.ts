@@ -82,7 +82,7 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === "production") {
   app.use(express.static("dist/public"));
 
-  app.get("*", (_req, res) => {
+  app.get("/*", (req, res) => {
     res.sendFile("index.html", { root: "dist/public" });
   });
 } else {
