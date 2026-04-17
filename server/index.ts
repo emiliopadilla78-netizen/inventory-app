@@ -82,9 +82,11 @@ app.use((req, res, next) => {
   if (process.env.NODE_ENV === "production") {
   app.use(express.static("dist/public"));
 
-  app.get("/*", (req, res) => {
-    res.sendFile("index.html", { root: "dist/public" });
-  });
+  app.use((req, res, next) => {
+  if (req.method !== "GET") return next();
+
+  res.sendFile("index.html", { root: "dist/public" });
+});
 } else {
   const { setupVite } = await import("./vite");
   await setupVite(httpServer, app);
